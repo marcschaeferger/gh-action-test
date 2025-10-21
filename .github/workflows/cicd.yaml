@@ -1,0 +1,167 @@
+name: CI/CD Pipeline
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+on:
+  push:
+    tags:
+      - "*"
+
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    name: Build and Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      DOCKERHUB_IMAGE: docker.io/${{ secrets.DOCKER_HUB_USERNAME }}/${{ github.event.repository.name }}
+      GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+
+      - name: Extract tag name
+        run: echo "TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+        shell: bash
+
+      - name: Install Go
+        uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Build and push (Docker Hub)
+        run: |
+          set -euo pipefail
+          TAG_VAR="${TAG}"
+          make docker-build-release tag=$TAG_VAR
+          echo "Built & pushed: $DOCKERHUB_IMAGE:$TAG_VAR"
+        shell: bash
+
+      - name: Install skopeo + jq
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y skopeo jq
+          skopeo --version
+        shell: bash
+
+      - name: Resolve Docker Hub digest
+        run: |
+          set -euo pipefail
+          TAG_VAR="${TAG}"
+          DIGEST="$(skopeo inspect --retry-times 3 docker://$DOCKERHUB_IMAGE:$TAG_VAR | jq -r '.Digest')"
+          echo "DIGEST=$DIGEST" >> $GITHUB_ENV
+          echo "DH_REF=$DOCKERHUB_IMAGE@$DIGEST" >> $GITHUB_ENV
+          echo "Docker Hub digest: $DIGEST"
+        shell: bash
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
+
+      - name: Sanity check cosign private key
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD:    ${{ secrets.COSIGN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          cosign public-key --key env://COSIGN_PRIVATE_KEY >/dev/null
+        shell: bash
+
+      - name: Login GHCR
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Mirror to GHCR (image + signatures)
+        run: |
+          set -euo pipefail
+          TAG_VAR="${{ env.TAG }}"
+          SRC="$DOCKERHUB_IMAGE:$TAG_VAR"
+          DEST="$GHCR_IMAGE:$TAG_VAR"
+          echo "Attempting cosign copy $SRC -> $DEST (with signatures)"
+          n=0
+          until [ $n -ge 3 ]; do
+            if cosign copy "$SRC" "$DEST"; then
+              echo "cosign copy succeeded"
+              break
+            fi
+            n=$((n+1))
+            echo "cosign copy failed attempt $n, retrying in 5s..." >&2
+            sleep 5
+          done
+          if [ $n -ge 3 ]; then
+            echo "cosign copy failed after retries; falling back to skopeo copy image then transferring signatures" >&2
+            # Copy the image (multi-arch manifest) without signatures
+            skopeo copy --retry-times 3 docker://$SRC docker://$DEST
+            # Transfer signatures only (cosign copy with digest refs once GHCR digest is known later)
+            echo "Image copied via skopeo; signatures will be re-generated for GHCR by re-signing digest if needed."
+          fi
+        shell: bash
+
+      - name: Resolve GHCR digest
+        run: |
+          set -euo pipefail
+          TAG_VAR="${TAG}"
+          GHCR_DIGEST="$(skopeo inspect --retry-times 3 docker://$GHCR_IMAGE:$TAG_VAR | jq -r '.Digest')"
+          echo "GHCR_REF=$GHCR_IMAGE@$GHCR_DIGEST" >> $GITHUB_ENV
+          echo "GHCR digest: $GHCR_DIGEST"
+        shell: bash
+
+      - name: Sign GHCR image (tag) with key
+        env:
+          COSIGN_YES: "true"
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD:    ${{ secrets.COSIGN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          TAG_VAR="${TAG}"
+          IMAGE_TAG_REF="$GHCR_IMAGE:$TAG_VAR"
+          echo "Signing $IMAGE_TAG_REF with provided key"
+          cosign sign --key env://COSIGN_PRIVATE_KEY "$IMAGE_TAG_REF"
+        shell: bash
+
+      - name: Verify signature (public key) GHCR digest + tag
+        env:
+            COSIGN_PUBLIC_KEY: ${{ secrets.COSIGN_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          TAG_VAR="${TAG}"
+          echo "Verifying (digest) ${GHCR_REF}"
+          cosign verify --key env://COSIGN_PUBLIC_KEY "$GHCR_REF" -o text
+          echo "Verifying (tag) $GHCR_IMAGE:$TAG_VAR"
+          cosign verify --key env://COSIGN_PUBLIC_KEY "$GHCR_IMAGE:$TAG_VAR" -o text
+        shell: bash
+
+      - name: Build binaries
+        run: |
+          set -euo pipefail
+          TAG_VAR="${{ env.TAG }}"
+          make go-build-release tag=$TAG_VAR
+        shell: bash
+
+      - name: Upload artifacts from /bin
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: binaries
+          path: bin/
