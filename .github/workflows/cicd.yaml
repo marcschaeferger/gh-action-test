@@ -113,7 +113,7 @@ jobs:
           if [ $n -ge 3 ]; then
             echo "cosign copy failed after retries; falling back to skopeo copy image then transferring signatures" >&2
             # Copy the image (multi-arch manifest) without signatures
-            skopeo copy --retry-times 3 docker://$SRC docker://$DEST
+            skopeo copy --all --retry-times 3 docker://$SRC docker://$DEST
             # Transfer signatures only (cosign copy with digest refs once GHCR digest is known later)
             echo "Image copied via skopeo; signatures will be re-generated for GHCR by re-signing digest if needed."
           fi
@@ -137,6 +137,17 @@ jobs:
           set -euo pipefail
           echo "Signing ${GHCR_REF} (digest) recursively with provided key"
           cosign sign --key env://COSIGN_PRIVATE_KEY --recursive "${GHCR_REF}"
+        shell: bash
+
+      - name: Sign Docker Hub image (digest) with key (recursive)
+        env:
+          COSIGN_YES: "true"
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD:    ${{ secrets.COSIGN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          echo "Signing ${DH_REF} (digest) recursively with provided key"
+          cosign sign --key env://COSIGN_PRIVATE_KEY --recursive "${DH_REF}"
         shell: bash
 
       - name: Verify signature (public key) GHCR digest + tag
