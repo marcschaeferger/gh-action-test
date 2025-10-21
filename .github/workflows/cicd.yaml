@@ -128,17 +128,15 @@ jobs:
           echo "GHCR digest: $GHCR_DIGEST"
         shell: bash
 
-      - name: Sign GHCR image (tag) with key
+      - name: Sign GHCR image (digest) with key
         env:
           COSIGN_YES: "true"
           COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
           COSIGN_PASSWORD:    ${{ secrets.COSIGN_PASSWORD }}
         run: |
           set -euo pipefail
-          TAG_VAR="${TAG}"
-          IMAGE_TAG_REF="$GHCR_IMAGE:$TAG_VAR"
-          echo "Signing $IMAGE_TAG_REF with provided key"
-          cosign sign --key env://COSIGN_PRIVATE_KEY "$IMAGE_TAG_REF"
+          echo "Signing ${GHCR_REF} (digest) with provided key"
+          cosign sign --key env://COSIGN_PRIVATE_KEY "${GHCR_REF}"
         shell: bash
 
       - name: Verify signature (public key) GHCR digest + tag
