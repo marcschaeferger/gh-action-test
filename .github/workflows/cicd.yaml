@@ -76,6 +76,8 @@ jobs:
 
       - name: Install cosign
         uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
+        with:
+          cosign-release: 'v3.0.2'
 
       - name: Sanity check cosign private key
         env:
@@ -139,6 +141,23 @@ jobs:
           cosign sign --key env://COSIGN_PRIVATE_KEY --recursive "${GHCR_REF}"
         shell: bash
 
+      - name: Keyless sign & verify GHCR digest (OIDC)
+        env:
+          COSIGN_YES: "true"
+          WORKFLOW_REF: ${{ github.workflow_ref }}  # owner/repo/.github/workflows/release.yml@refs/tags/v1.2.3
+          ISSUER: https://token.actions.githubusercontent.com
+        run: |
+          set -euo pipefail
+          echo "Keyless signing ${GHCR_REF}"
+          cosign sign --recursive "${GHCR_REF}"
+          echo "Verify keyless (OIDC) signature policy on ${GHCR_REF}"
+          cosign verify \
+            --certificate-oidc-issuer "${ISSUER}" \
+            --certificate-identity "https://github.com/${WORKFLOW_REF}" \
+            "${GHCR_REF}" -o text
+        shell: bash
+
+
       - name: Sign Docker Hub image (digest) with key (recursive)
         env:
           COSIGN_YES: "true"
@@ -160,6 +179,15 @@ jobs:
           cosign verify --key env://COSIGN_PUBLIC_KEY "$GHCR_REF" -o text
           echo "Verifying (tag) $GHCR_IMAGE:$TAG_VAR"
           cosign verify --key env://COSIGN_PUBLIC_KEY "$GHCR_IMAGE:$TAG_VAR" -o text
+        shell: bash
+
+      - name: Verify signature (public key) Docker Hub digest
+        env:
+          COSIGN_PUBLIC_KEY: ${{ secrets.COSIGN_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          echo "Verifying (digest) ${DH_REF}"
+          cosign verify --key env://COSIGN_PUBLIC_KEY "${DH_REF}" -o text
         shell: bash
 
       - name: Build binaries
