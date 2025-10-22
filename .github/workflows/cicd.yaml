@@ -1,9 +1,12 @@
 name: CI/CD Pipeline
 
 permissions:
-  contents: read
-  packages: write
-  id-token: write
+  contents: write          # gh-release
+  packages: write          # GHCR push
+  id-token: write          # Keyless-Signatures & Attestations
+  attestations: write      # actions/attest-build-provenance
+  security-events: write   # upload-sarif
+  actions: read 
 
 on:
   push:
