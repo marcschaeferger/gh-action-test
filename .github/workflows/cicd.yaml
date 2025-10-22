@@ -72,9 +72,11 @@ jobs:
             org.opencontainers.image.title=${{ github.event.repository.name }}
             org.opencontainers.image.version=${{ env.TAG }}
             org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.created=${{ github.event.repository.updated_at }}
+            org.opencontainers.image.source=${{ github.event.repository.html_url }}
+            org.opencontainers.image.url=${{ github.event.repository.html_url }}
+            org.opencontainers.image.description=${{ github.event.repository.description }}
+            org.opencontainers.image.licenses=${{ github.event.repository.license.spdx_id }}
+            org.opencontainers.image.created=${{ steps.build.outputs.metadata_created || env.IMAGE_CREATED }}
 
       - name: Build and push (Docker Hub + GHCR)
         id: build
@@ -113,6 +115,18 @@ jobs:
           subject-name: ${{ env.DOCKERHUB_IMAGE }}
           subject-digest: ${{ steps.build.outputs.digest }}
           show-summary: true
+
+      - name: Add attestation links to summary
+        run: |
+          {
+            echo "## 🔏 Attestations";
+            echo "- Übersicht: https://github.com/${GITHUB_REPOSITORY}/attestations";
+            echo "- GHCR: ${{ steps.attest-ghcr.outputs.attestation-url }}";
+            echo "- Docker Hub: ${{ steps.attest-dh.outputs.attestation-url }}";
+            echo "";
+            echo "Repo: https://github.com/${GITHUB_REPOSITORY}";
+            echo "Digest: \`${{ steps.build.outputs.digest }}\`";
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Install cosign
         uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
