@@ -56,44 +56,56 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@c1e51972afc2121e065aed6d45c65596fe445f3f # v5.8.0
+        with:
+          images: |
+            ${{ env.DOCKERHUB_IMAGE }}
+            ${{ env.GHCR_IMAGE }}
+          tags: |
+            type=raw,value=${{ env.TAG }}
+          labels: |
+            org.opencontainers.image.title=${{ github.event.repository.name }}
+            org.opencontainers.image.version=${{ env.TAG }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.created=${{ github.event.repository.updated_at }}
+
       - name: Build and push (Docker Hub + GHCR)
+        id: build
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true
+
+      - name: Compute image digest refs
         run: |
-          set -euo pipefail
-          TAG_VAR="${TAG}"
-          docker buildx build \
-            --platform linux/amd64,linux/arm64 \
-            --push \
-            -t "$DOCKERHUB_IMAGE:$TAG_VAR" \
-            -t "$GHCR_IMAGE:$TAG_VAR" \
-            .
-          echo "Built & pushed to: $DOCKERHUB_IMAGE:$TAG_VAR and $GHCR_IMAGE:$TAG_VAR"
+          echo "DIGEST=${{ steps.build.outputs.digest }}" >> $GITHUB_ENV
+          echo "GHCR_REF=$GHCR_IMAGE@${{ steps.build.outputs.digest }}" >> $GITHUB_ENV
+          echo "DH_REF=$DOCKERHUB_IMAGE@${{ steps.build.outputs.digest }}" >> $GITHUB_ENV
+          echo "Built digest: ${{ steps.build.outputs.digest }}"
         shell: bash
 
-      - name: Install skopeo + jq
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y skopeo jq
-          skopeo --version
-        shell: bash
+      - name: Attest build provenance (GHCR)
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
+        with:
+          subject-name: ${{ env.GHCR_IMAGE }}
+          subject-digest: ${{ steps.build.outputs.digest }}
 
-      - name: Resolve Docker Hub digest
-        run: |
-          set -euo pipefail
-          TAG_VAR="${TAG}"
-          DIGEST="$(skopeo inspect --retry-times 3 docker://$DOCKERHUB_IMAGE:$TAG_VAR | jq -r '.Digest')"
-          echo "DIGEST=$DIGEST" >> $GITHUB_ENV
-          echo "DH_REF=$DOCKERHUB_IMAGE@$DIGEST" >> $GITHUB_ENV
-          echo "Docker Hub digest: $DIGEST"
-        shell: bash
-
-      - name: Resolve GHCR digest
-        run: |
-          set -euo pipefail
-          TAG_VAR="${TAG}"
-          GHCR_DIGEST="$(skopeo inspect --retry-times 3 docker://$GHCR_IMAGE:$TAG_VAR | jq -r '.Digest')"
-          echo "GHCR_REF=$GHCR_IMAGE@$GHCR_DIGEST" >> $GITHUB_ENV
-          echo "GHCR digest: $GHCR_DIGEST"
-        shell: bash
+      - name: Attest build provenance (Docker Hub)
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
+        with:
+          subject-name: ${{ env.DOCKERHUB_IMAGE }}
+          subject-digest: ${{ steps.build.outputs.digest }}
 
       - name: Install cosign
         uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
@@ -136,9 +148,7 @@ jobs:
             "${GHCR_REF}" -o text
         shell: bash
 
-
       - name: Sign Docker Hub image (digest) with key (recursive)
-        # Debug
         continue-on-error: true
         env:
           COSIGN_YES: "true"
@@ -152,11 +162,10 @@ jobs:
         shell: bash
 
       - name: Keyless sign & verify Docker Hub digest (OIDC)
-        # Debug
         continue-on-error: true
         env:
           COSIGN_YES: "true"
-          WORKFLOW_REF: ${{ github.workflow_ref }}  # owner/repo/.github/workflows/<file>@refs/tags/<tag>
+          WORKFLOW_REF: ${{ github.workflow_ref }}
           ISSUER: https://token.actions.githubusercontent.com
           COSIGN_DOCKER_MEDIA_TYPES: "1"
         run: |
@@ -183,16 +192,29 @@ jobs:
         shell: bash
 
       - name: Verify signature (public key) Docker Hub digest
-        # Debug
         continue-on-error: true
         env:
           COSIGN_PUBLIC_KEY: ${{ secrets.COSIGN_PUBLIC_KEY }}
           COSIGN_DOCKER_MEDIA_TYPES: "1"
         run: |
           set -euo pipefail
-          echo "Verifying (digest) ${DH_REF}"
+          echo "Verifying (digest) ${DH_REF} with Docker media types"
           cosign verify --key env://COSIGN_PUBLIC_KEY "${DH_REF}" -o text
         shell: bash
+
+      - name: Trivy scan (GHCR image)
+        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
+        continue-on-error: true
+        with:
+          image-ref: ${{ env.GHCR_IMAGE }}@${{ steps.build.outputs.digest }}
+          format: sarif
+          output: trivy-ghcr.sarif
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v4 # Need to Check SHA Version
+        with:
+          sarif_file: trivy-ghcr.sarif
+          category: Image Vulnerability Scan
 
       - name: Build binaries
         run: |
@@ -201,8 +223,16 @@ jobs:
           make go-build-release tag=$TAG_VAR
         shell: bash
 
-      - name: Upload artifacts from /bin
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@6da8fa9354ddfdc4aeace5fc48d7f679b5214090 # v2.4.1
         with:
-          name: binaries
-          path: bin/
+          tag_name: ${{ env.TAG }}
+          generate_release_notes: true
+          files: |
+            bin/*
+          body: |
+            ## Container Images
+            - GHCR: `${{ env.GHCR_REF }}`
+            - Docker Hub: `${{ env.DH_REF }}`
+
+            **Digest:** `${{ steps.build.outputs.digest }}`
