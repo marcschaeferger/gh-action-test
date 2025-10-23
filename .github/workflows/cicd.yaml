@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
-      DOCKERHUB_IMAGE: docker.io/${{ secrets.DOCKER_HUB_USERNAME }}/${{ github.event.repository.name }}
+      DOCKERHUB_IMAGE: docker.io/${{ vars.DOCKER_HUB_USERNAME }}/${{ github.event.repository.name }}
       GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}
 
     steps:
@@ -40,7 +40,7 @@ jobs:
         uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
         with:
           registry: docker.io
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          username: ${{ vars.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
 
       - name: Log in to GHCR
@@ -77,6 +77,60 @@ jobs:
             org.opencontainers.image.description=${{ github.event.repository.description }}
             org.opencontainers.image.licenses=${{ github.event.repository.license.spdx_id }}
             org.opencontainers.image.created=${{ steps.build.outputs.metadata_created || env.IMAGE_CREATED }}
+
+      - name: Echo build config (non-secret)
+        shell: bash
+        env:
+          # OCI
+          IMAGE_TITLE:        ${{ github.event.repository.name }}
+          IMAGE_VERSION:      ${{ env.TAG }}
+          IMAGE_REVISION:     ${{ github.sha }}
+          IMAGE_SOURCE_URL:   ${{ github.event.repository.html_url }}
+          IMAGE_URL:          ${{ github.event.repository.html_url }}
+          IMAGE_DESCRIPTION:  ${{ github.event.repository.description }}
+          IMAGE_LICENSE:      ${{ github.event.repository.license.spdx_id }}
+          # Images
+          DOCKERHUB_IMAGE:    ${{ env.DOCKERHUB_IMAGE }}
+          GHCR_IMAGE:         ${{ env.GHCR_IMAGE }}
+          DOCKER_HUB_USER:    ${{ vars.DOCKER_HUB_USERNAME }}
+          # GitHub
+          REPO:               ${{ github.repository }}
+          OWNER:              ${{ github.repository_owner }}
+          WORKFLOW_REF:       ${{ github.workflow_ref }}
+          REF:                ${{ github.ref }}
+          REF_NAME:           ${{ github.ref_name }}
+          RUN_URL:            https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          echo "=== OCI Label Values ==="
+          echo "org.opencontainers.image.title=${IMAGE_TITLE}"
+          echo "org.opencontainers.image.version=${IMAGE_VERSION}"
+          echo "org.opencontainers.image.revision=${IMAGE_REVISION}"
+          echo "org.opencontainers.image.source=${IMAGE_SOURCE_URL}"
+          echo "org.opencontainers.image.url=${IMAGE_URL}"
+          echo "org.opencontainers.image.description=${IMAGE_DESCRIPTION}"
+          echo "org.opencontainers.image.licenses=${IMAGE_LICENSE}"
+          echo
+          echo "=== Images ==="
+          echo "DOCKERHUB_IMAGE=${DOCKERHUB_IMAGE}"
+          echo "GHCR_IMAGE=${GHCR_IMAGE}"
+          echo "DOCKER_HUB_USERNAME=${DOCKER_HUB_USER}"
+          echo
+          echo "=== GitHub Kontext ==="
+          echo "repository=${REPO}"
+          echo "owner=${OWNER}"
+          echo "workflow_ref=${WORKFLOW_REF}"
+          echo "ref=${REF}"
+          echo "ref_name=${REF_NAME}"
+          echo "run_url=${RUN_URL}"
+          echo
+          echo "=== docker/metadata-action outputs (Tags/Labels), roh ==="
+          echo "::group::tags"
+          echo "${{ steps.meta.outputs.tags }}"
+          echo "::endgroup::"
+          echo "::group::labels"
+          echo "${{ steps.meta.outputs.labels }}"
+          echo "::endgroup::"
 
       - name: Build and push (Docker Hub + GHCR)
         id: build
@@ -120,12 +174,13 @@ jobs:
         run: |
           {
             echo "## 🔏 Attestations";
-            echo "- Übersicht: https://github.com/${GITHUB_REPOSITORY}/attestations";
+            echo "- Übersicht: https://github.com/${{ github.event.repository.name }}/attestations";
             echo "- GHCR: ${{ steps.attest-ghcr.outputs.attestation-url }}";
             echo "- Docker Hub: ${{ steps.attest-dh.outputs.attestation-url }}";
             echo "";
-            echo "Repo: https://github.com/${GITHUB_REPOSITORY}";
+            echo "Repo: https://github.com/${{ github.event.repository.name }}";
             echo "Digest: \`${{ steps.build.outputs.digest }}\`";
+            echo "GHCR: ${{ env.GHCR_IMAGE }}";
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Install cosign
@@ -202,19 +257,19 @@ jobs:
           if ! cosign verify \
             --rekor-url https://rekor.sigstore.dev \
             --certificate-oidc-issuer "${ISSUER}" \
-            --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/.github/workflows/[^@]+@refs/tags/${TAG}$" \
+            --certificate-identity-regexp "^https://github.com/${{ github.event.repository.name }}/.github/workflows/[^@]+@refs/tags/${TAG}$" \
             "${DH_REF}" -o text; then
             echo "Rekor verify failed — retry offline bundle verify (no Rekor)"
             if ! cosign verify \
               --offline \
               --certificate-oidc-issuer "${ISSUER}" \
-              --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/.github/workflows/[^@]+@refs/tags/${TAG}$" \
+              --certificate-identity-regexp "^https://github.com/${{ github.event.repository.name }}/.github/workflows/[^@]+@refs/tags/${TAG}$" \
               "${DH_REF}" -o text; then
               echo "Offline bundle verify failed — ignore tlog (TEMP for debugging)"
               cosign verify \
                 --insecure-ignore-tlog=true \
                 --certificate-oidc-issuer "${ISSUER}" \
-                --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/.github/workflows/[^@]+@refs/tags/${TAG}$" \
+                --certificate-identity-regexp "^https://github.com/${{ github.event.repository.name }}/.github/workflows/[^@]+@refs/tags/${TAG}$" \
                 "${DH_REF}" -o text || true
             fi
           fi
