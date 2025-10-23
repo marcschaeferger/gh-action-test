@@ -170,19 +170,6 @@ jobs:
           subject-digest: ${{ steps.build.outputs.digest }}
           show-summary: true
 
-      - name: Add attestation links to summary
-        run: |
-          {
-            echo "## 🔏 Attestations";
-            echo "- Übersicht: https://github.com/${{ github.event.repository.name }}/attestations";
-            echo "- GHCR: ${{ steps.attest-ghcr.outputs.attestation-url }}";
-            echo "- Docker Hub: ${{ steps.attest-dh.outputs.attestation-url }}";
-            echo "";
-            echo "Repo: https://github.com/${{ github.event.repository.name }}";
-            echo "Digest: \`${{ steps.build.outputs.digest }}\`";
-            echo "GHCR: ${{ env.GHCR_IMAGE }}";
-          } >> "$GITHUB_STEP_SUMMARY"
-
       - name: Install cosign
         uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
         with:
