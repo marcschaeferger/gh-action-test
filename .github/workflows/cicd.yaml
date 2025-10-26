@@ -122,8 +122,10 @@ jobs:
 
       - name: Normalize image names to lowercase
         run: |
-          echo "GHCR_IMAGE=$(echo \"${GHCR_IMAGE}\" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
-          echo "DOCKERHUB_IMAGE=$(echo \"${DOCKERHUB_IMAGE}\" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+          set -euo pipefail
+          # Lowercase without introducing literal quotes or spawning subshells
+          echo "GHCR_IMAGE=${GHCR_IMAGE,,}" >> "$GITHUB_ENV"
+          echo "DOCKERHUB_IMAGE=${DOCKERHUB_IMAGE,,}" >> "$GITHUB_ENV"
         shell: bash
 
       - name: Extract tag name
@@ -351,6 +353,16 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ github.repository }}
           provenance: mode=max
           sbom: true
+
+      - name: Dequote image names (safety)
+        run: |
+          set -euo pipefail
+          # Remove any accidental literal double-quotes from the image names
+          GHCR_IMAGE=${GHCR_IMAGE//\"/}
+          DOCKERHUB_IMAGE=${DOCKERHUB_IMAGE//\"/}
+          echo "GHCR_IMAGE=$GHCR_IMAGE" >> "$GITHUB_ENV"
+          echo "DOCKERHUB_IMAGE=$DOCKERHUB_IMAGE" >> "$GITHUB_ENV"
+        shell: bash
 
       - name: Compute image digest refs
         run: |
