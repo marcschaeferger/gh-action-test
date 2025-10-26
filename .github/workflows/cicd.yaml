@@ -143,11 +143,11 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
           set -euo pipefail
-          for i in {1..30}; do
+          for i in {1..90}; do
             if git ls-remote --tags origin "refs/tags/${TAG}" | grep -qE "refs/tags/${TAG}$"; then
               echo "Tag ${TAG} is visible on origin"; exit 0
             fi
-            echo "Tag not yet visible, retrying... ($i/30)"
+            echo "Tag not yet visible, retrying... ($i/90)"
             sleep 2
           done
           echo "Tag ${TAG} not visible after waiting"; exit 1
@@ -263,6 +263,7 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=${{ github.event.repository.html_url }}
             org.opencontainers.image.url=${{ github.event.repository.html_url }}
+            org.opencontainers.image.documentation=${{ github.event.repository.html_url }}
             org.opencontainers.image.description=${{ github.event.repository.description }}
             org.opencontainers.image.licenses=${{ env.IMAGE_LICENSE }}
             org.opencontainers.image.created=${{ env.IMAGE_CREATED }}
