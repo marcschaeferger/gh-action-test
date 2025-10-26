@@ -121,6 +121,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Normalize image names to lowercase
+        run: |
+          echo "GHCR_IMAGE=$(echo \"${GHCR_IMAGE}\" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+          echo "DOCKERHUB_IMAGE=$(echo \"${DOCKERHUB_IMAGE}\" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+        shell: bash
+
       - name: Extract tag name
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -131,6 +137,29 @@ jobs:
           else
             echo "TAG=${{ github.ref_name }}" >> $GITHUB_ENV
           fi
+        shell: bash
+
+      - name: Wait for tag to be visible (dispatch only)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          set -euo pipefail
+          for i in {1..30}; do
+            if git ls-remote --tags origin "refs/tags/${TAG}" | grep -qE "refs/tags/${TAG}$"; then
+              echo "Tag ${TAG} is visible on origin"; exit 0
+            fi
+            echo "Tag not yet visible, retrying... ($i/30)"
+            sleep 2
+          done
+          echo "Tag ${TAG} not visible after waiting"; exit 1
+        shell: bash
+
+      - name: Ensure repository is at the tagged commit (dispatch only)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+          git checkout "refs/tags/${TAG}"
+          echo "Checked out $(git rev-parse --short HEAD) for tag ${TAG}"
         shell: bash
 
       - name: Detect release candidate (rc)
