@@ -43,6 +43,7 @@ jobs:
         uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
 
       - name: Log in to Docker Hub
+        if: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN != '' && vars.DOCKER_HUB_USERNAME != '' }}
         uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
         with:
           registry: docker.io
@@ -192,6 +193,7 @@ jobs:
           show-summary: true
 
       - name: Attest build provenance (Docker Hub)
+        if: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN != '' && vars.DOCKER_HUB_USERNAME != '' }}
         id: attest-dh
         uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
         with:
@@ -253,6 +255,7 @@ jobs:
         shell: bash
 
       - name: Sign Docker Hub image (digest) with key (recursive)
+        if: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN != '' && vars.DOCKER_HUB_USERNAME != '' }}
         continue-on-error: true
         env:
           COSIGN_YES: "true"
@@ -266,6 +269,7 @@ jobs:
         shell: bash
 
       - name: Sign Docker Hub attachments (SBOM and provenance) with key
+        if: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN != '' && vars.DOCKER_HUB_USERNAME != '' }}
         continue-on-error: true
         env:
           COSIGN_YES: "true"
@@ -280,6 +284,7 @@ jobs:
         shell: bash
 
       - name: Keyless sign & verify Docker Hub digest (OIDC)
+        if: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN != '' && vars.DOCKER_HUB_USERNAME != '' }}
         # debug
         continue-on-error: true
         env:
@@ -329,6 +334,7 @@ jobs:
         shell: bash
 
       - name: Verify signature (public key) Docker Hub digest
+        if: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN != '' && vars.DOCKER_HUB_USERNAME != '' }}
         continue-on-error: true
         env:
           COSIGN_PUBLIC_KEY: ${{ secrets.COSIGN_PUBLIC_KEY }}
@@ -340,7 +346,7 @@ jobs:
         shell: bash
 
       - name: Verify signature (public key) Docker Hub tag
-        if: env.TAG != ''
+        if: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN != '' && vars.DOCKER_HUB_USERNAME != '' && env.TAG != '' }}
         continue-on-error: true
         env:
           COSIGN_PUBLIC_KEY: ${{ secrets.COSIGN_PUBLIC_KEY }}
