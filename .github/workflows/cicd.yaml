@@ -34,7 +34,7 @@ on:
         default: "main"
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref_name }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
@@ -56,8 +56,8 @@ jobs:
           INPUT_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          if ! [[ "$INPUT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Invalid version: $INPUT_VERSION (expected X.Y.Z)" >&2
+          if ! [[ "$INPUT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
+            echo "Invalid version: $INPUT_VERSION (expected X.Y.Z or X.Y.Z-rc.N)" >&2
             exit 1
           fi
 
@@ -232,13 +232,25 @@ jobs:
         run: echo "IMAGE_LICENSE=${{ github.event.repository.license.spdx_id || 'NOASSERTION' }}" >> $GITHUB_ENV
         shell: bash
 
+      - name: Resolve registries list (GHCR always, Docker Hub only if creds)
+        shell: bash
+        run: |
+          set -euo pipefail
+          images="${GHCR_IMAGE}"
+          if [ -n "${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}" ] && [ -n "${{ vars.DOCKER_HUB_USERNAME }}" ]; then
+            images="${images}\n${DOCKERHUB_IMAGE}"
+          fi
+          {
+            echo 'IMAGE_LIST<<EOF'
+            echo -e "$images"
+            echo 'EOF'
+          } >> "$GITHUB_ENV"
+
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@c1e51972afc2121e065aed6d45c65596fe445f3f # v5.8.0
         with:
-          images: |
-            ${{ env.DOCKERHUB_IMAGE }}
-            ${{ env.GHCR_IMAGE }}
+          images: ${{ env.IMAGE_LIST }}
           tags: |
             type=semver,pattern={{version}},value=${{ env.TAG }}
             type=semver,pattern={{major}}.{{minor}},value=${{ env.TAG }},enable=${{ and(eq(env.PUBLISH_MINOR, 'true'), ne(env.IS_RC, 'true')) }}
@@ -267,7 +279,7 @@ jobs:
           IMAGE_SOURCE_URL:   ${{ github.event.repository.html_url }}
           IMAGE_URL:          ${{ github.event.repository.html_url }}
           IMAGE_DESCRIPTION:  ${{ github.event.repository.description }}
-          IMAGE_LICENSE:      ${{ github.event.repository.license.spdx_id }}
+          IMAGE_LICENSE:      ${{ env.IMAGE_LICENSE }}
           # Images
           DOCKERHUB_IMAGE:    ${{ env.DOCKERHUB_IMAGE }}
           GHCR_IMAGE:         ${{ env.GHCR_IMAGE }}
@@ -396,7 +408,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "Keyless signing ${GHCR_REF}"
-          cosign sign --recursive "${GHCR_REF}"
+          cosign sign --rekor-url https://rekor.sigstore.dev --recursive "${GHCR_REF}"
           echo "Verify keyless (OIDC) signature policy on ${GHCR_REF}"
           cosign verify \
             --certificate-oidc-issuer "${ISSUER}" \
@@ -545,6 +557,9 @@ jobs:
           category: Image Vulnerability Scan
 
       - name: Build binaries
+        env:
+          CGO_ENABLED: "0"
+          GOFLAGS: "-trimpath"
         run: |
           set -euo pipefail
           TAG_VAR="${TAG}"
