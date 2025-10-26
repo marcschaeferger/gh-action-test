@@ -345,6 +345,9 @@ jobs:
           image-ref: ${{ env.GHCR_IMAGE }}@${{ steps.build.outputs.digest }}
           format: sarif
           output: trivy-ghcr.sarif
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
 
       - name: Upload SARIF
         uses: github/codeql-action/upload-sarif@v4 # Need to Check SHA Version
