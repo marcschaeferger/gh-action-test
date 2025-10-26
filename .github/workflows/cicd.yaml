@@ -338,6 +338,18 @@ jobs:
           cosign verify --key env://COSIGN_PUBLIC_KEY "${DH_REF}" -o text
         shell: bash
 
+      - name: Verify signature (public key) Docker Hub tag
+        if: env.TAG != ''
+        continue-on-error: true
+        env:
+          COSIGN_PUBLIC_KEY: ${{ secrets.COSIGN_PUBLIC_KEY }}
+          COSIGN_DOCKER_MEDIA_TYPES: "1"
+        run: |
+          set -euo pipefail
+          echo "Verifying (tag) $DOCKERHUB_IMAGE:$TAG with Docker media types"
+          cosign verify --key env://COSIGN_PUBLIC_KEY "$DOCKERHUB_IMAGE:$TAG" -o text
+        shell: bash
+
       - name: Trivy scan (GHCR image)
         uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
         continue-on-error: true
