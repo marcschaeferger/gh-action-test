@@ -420,6 +420,19 @@ jobs:
           image-ref: ${{ env.GHCR_IMAGE }}@${{ steps.build.outputs.digest }}
           format: spdx-json
           output: sbom.spdx.json
+      - name: Validate SBOM JSON
+        run: |
+          set -euo pipefail
+          # Fail early if sbom is not valid JSON
+          jq -e . sbom.spdx.json >/dev/null
+        shell: bash
+
+      - name: Minify SBOM JSON (optional hardening)
+        run: |
+          set -euo pipefail
+          # Minify to avoid surprising whitespace/control characters
+          jq -c . sbom.spdx.json > sbom.min.json && mv sbom.min.json sbom.spdx.json
+        shell: bash
 
       - name: Create SBOM attestation (GHCR, private key)
         env:
@@ -430,7 +443,7 @@ jobs:
           set -euo pipefail
           cosign attest \
             --key env://COSIGN_PRIVATE_KEY \
-            --type spdx \
+            --type spdxjson \
             --predicate sbom.spdx.json \
             "${GHCR_REF}"
         shell: bash
@@ -530,7 +543,7 @@ jobs:
       - name: Verify SBOM attestation (GHCR)
         env:
           COSIGN_PUBLIC_KEY: ${{ secrets.COSIGN_PUBLIC_KEY }}
-        run: cosign verify-attestation --key env://COSIGN_PUBLIC_KEY --type spdx "$GHCR_REF" -o text
+        run: cosign verify-attestation --key env://COSIGN_PUBLIC_KEY --type spdxjson "$GHCR_REF" -o text
         shell: bash
 
       - name: Verify SLSA provenance (GHCR)
