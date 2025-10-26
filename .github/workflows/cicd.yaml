@@ -298,19 +298,19 @@ jobs:
           if ! cosign verify \
             --rekor-url https://rekor.sigstore.dev \
             --certificate-oidc-issuer "${ISSUER}" \
-            --certificate-identity-regexp "^https://github.com/${{ github.event.repository.name }}/.github/workflows/[^@]+@refs/tags/${TAG}$" \
+            --certificate-identity-regexp "^https://github.com/${{ github.repository }}/.github/workflows/[^@]+@refs/tags/${TAG}$" \
             "${DH_REF}" -o text; then
             echo "Rekor verify failed — retry offline bundle verify (no Rekor)"
             if ! cosign verify \
               --offline \
               --certificate-oidc-issuer "${ISSUER}" \
-              --certificate-identity-regexp "^https://github.com/${{ github.event.repository.name }}/.github/workflows/[^@]+@refs/tags/${TAG}$" \
+              --certificate-identity-regexp "^https://github.com/${{ github.repository }}/.github/workflows/[^@]+@refs/tags/${TAG}$" \
               "${DH_REF}" -o text; then
               echo "Offline bundle verify failed — ignore tlog (TEMP for debugging)"
               cosign verify \
                 --insecure-ignore-tlog=true \
                 --certificate-oidc-issuer "${ISSUER}" \
-                --certificate-identity-regexp "^https://github.com/${{ github.event.repository.name }}/.github/workflows/[^@]+@refs/tags/${TAG}$" \
+                --certificate-identity-regexp "^https://github.com/${{ github.repository }}/.github/workflows/[^@]+@refs/tags/${TAG}$" \
                 "${DH_REF}" -o text || true
             fi
           fi
