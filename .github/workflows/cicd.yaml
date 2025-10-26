@@ -334,6 +334,14 @@ jobs:
           cosign verify --key env://COSIGN_PUBLIC_KEY "$GHCR_IMAGE:$TAG_VAR" -o text
         shell: bash
 
+      - name: Verify SBOM attestation (GHCR)
+        run: cosign verify-attestation --type spdx "$GHCR_REF" -o text
+        shell: bash
+
+      - name: Verify SLSA provenance (GHCR)
+        run: cosign verify-attestation --type slsaprovenance "$GHCR_REF" -o text
+        shell: bash
+
       - name: Verify signature (public key) Docker Hub digest
         if: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN != '' && vars.DOCKER_HUB_USERNAME != '' }}
         continue-on-error: true
