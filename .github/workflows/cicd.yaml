@@ -20,7 +20,7 @@ concurrency:
 jobs:
   release:
     name: Build and Release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
       DOCKERHUB_IMAGE: docker.io/${{ vars.DOCKER_HUB_USERNAME }}/${{ github.event.repository.name }}
