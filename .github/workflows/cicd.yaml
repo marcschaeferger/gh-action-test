@@ -350,7 +350,7 @@ jobs:
           severity: CRITICAL,HIGH
 
       - name: Upload SARIF
-        uses: github/codeql-action/upload-sarif@v4 # Need to Check SHA Version
+        uses: github/codeql-action/upload-sarif@4e94bd11f71e507f7f87df81788dff88d1dacbfb # v4.31.0
         with:
           sarif_file: trivy-ghcr.sarif
           category: Image Vulnerability Scan
