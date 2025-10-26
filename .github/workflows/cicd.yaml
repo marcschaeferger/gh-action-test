@@ -92,6 +92,7 @@ jobs:
             ${{ env.DOCKERHUB_IMAGE }}
             ${{ env.GHCR_IMAGE }}
           tags: |
+            type=semver,pattern={{version}}
             type=raw,value=${{ env.TAG }}
           labels: |
             org.opencontainers.image.title=${{ github.event.repository.name }}
