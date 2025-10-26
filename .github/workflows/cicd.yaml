@@ -57,7 +57,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract tag name
-        run: echo "TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+        run: echo "TAG=${{ github.ref_name }}" >> $GITHUB_ENV
         shell: bash
 
       - name: Install Go
