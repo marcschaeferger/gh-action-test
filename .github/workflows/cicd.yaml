@@ -23,6 +23,11 @@ on:
         required: true
         type: boolean
         default: false
+      publish_minor:
+        description: "Also publish the 'major.minor' image tag (e.g., 1.2)"
+        required: true
+        type: boolean
+        default: false
       target_branch:
         description: "Branch to tag"
         required: false
@@ -128,6 +133,16 @@ jobs:
           fi
         shell: bash
 
+      - name: Detect release candidate (rc)
+        run: |
+          set -euo pipefail
+          if [[ "${TAG}" =~ ^[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
+            echo "IS_RC=true" >> $GITHUB_ENV
+          else
+            echo "IS_RC=false" >> $GITHUB_ENV
+          fi
+        shell: bash
+
       - name: Install Go
         uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
         with:
@@ -147,6 +162,22 @@ jobs:
             if [ "${PL_VAR}" = "true" ]; then val="true"; fi
           fi
           echo "PUBLISH_LATEST=$val" >> $GITHUB_ENV
+        shell: bash
+
+      - name: Resolve publish-minor flag
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PM_INPUT: ${{ inputs.publish_minor }}
+          PM_VAR: ${{ vars.PUBLISH_MINOR }}
+        run: |
+          set -euo pipefail
+          val="false"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            if [ "${PM_INPUT}" = "true" ]; then val="true"; fi
+          else
+            if [ "${PM_VAR}" = "true" ]; then val="true"; fi
+          fi
+          echo "PUBLISH_MINOR=$val" >> $GITHUB_ENV
         shell: bash
 
       - name: Cache Go modules
@@ -177,7 +208,8 @@ jobs:
             ${{ env.GHCR_IMAGE }}
           tags: |
             type=semver,pattern={{version}},value=${{ env.TAG }}
-            type=raw,value=latest,enable=${{ env.PUBLISH_LATEST == 'true' }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ env.TAG }},enable=${{ and(eq(env.PUBLISH_MINOR, 'true'), ne(env.IS_RC, 'true')) }}
+            type=raw,value=latest,enable=${{ and(eq(env.PUBLISH_LATEST, 'true'), ne(env.IS_RC, 'true')) }}
           labels: |
             org.opencontainers.image.title=${{ github.event.repository.name }}
             org.opencontainers.image.version=${{ env.TAG }}
