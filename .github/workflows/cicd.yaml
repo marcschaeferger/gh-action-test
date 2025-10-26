@@ -223,6 +223,18 @@ jobs:
           cosign sign --key env://COSIGN_PRIVATE_KEY --recursive "${GHCR_REF}"
         shell: bash
 
+      - name: Sign GHCR attachments (SBOM and provenance) with key
+        env:
+          COSIGN_YES: "true"
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD:    ${{ secrets.COSIGN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          echo "Signing attachments for ${GHCR_REF} (SBOM, provenance) with provided key"
+          cosign sign --key env://COSIGN_PRIVATE_KEY --attachment sbom "${GHCR_REF}"
+          cosign sign --key env://COSIGN_PRIVATE_KEY --attachment attestation "${GHCR_REF}"
+        shell: bash
+
       - name: Keyless sign & verify GHCR digest (OIDC)
         env:
           COSIGN_YES: "true"
