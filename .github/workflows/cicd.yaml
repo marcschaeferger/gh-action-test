@@ -228,6 +228,10 @@ jobs:
           go test ./... -race -covermode=atomic
         shell: bash
 
+      - name: Resolve license fallback
+        run: echo "IMAGE_LICENSE=${{ github.event.repository.license.spdx_id || 'NOASSERTION' }}" >> $GITHUB_ENV
+        shell: bash
+
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@c1e51972afc2121e065aed6d45c65596fe445f3f # v5.8.0
@@ -248,7 +252,7 @@ jobs:
             org.opencontainers.image.source=${{ github.event.repository.html_url }}
             org.opencontainers.image.url=${{ github.event.repository.html_url }}
             org.opencontainers.image.description=${{ github.event.repository.description }}
-            org.opencontainers.image.licenses=${{ github.event.repository.license.spdx_id }}
+            org.opencontainers.image.licenses=${{ env.IMAGE_LICENSE }}
             org.opencontainers.image.created=${{ env.IMAGE_CREATED }}
             org.opencontainers.image.ref.name=${{ env.TAG }}
             org.opencontainers.image.authors=${{ github.repository_owner }}
