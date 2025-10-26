@@ -417,7 +417,9 @@ jobs:
         shell: bash
 
       - name: Verify SBOM attestation (GHCR)
-        run: cosign verify-attestation --type spdx "$GHCR_REF" -o text
+        env:
+          COSIGN_PUBLIC_KEY: ${{ secrets.COSIGN_PUBLIC_KEY }}
+        run: cosign verify-attestation --key env://COSIGN_PUBLIC_KEY --type spdx "$GHCR_REF" -o text
         shell: bash
 
       - name: Verify SLSA provenance (GHCR)
