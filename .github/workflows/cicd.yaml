@@ -498,6 +498,7 @@ jobs:
             --type slsaprovenance \
             --certificate-oidc-issuer "$ISSUER" \
             --certificate-identity "https://github.com/${WFREF}" \
+            --rekor-url https://rekor.sigstore.dev \
             "$GHCR_REF" -o text
         shell: bash
 
