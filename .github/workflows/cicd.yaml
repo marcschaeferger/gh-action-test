@@ -239,6 +239,8 @@ jobs:
             type=semver,pattern={{version}},value=${{ env.TAG }}
             type=semver,pattern={{major}}.{{minor}},value=${{ env.TAG }},enable=${{ and(eq(env.PUBLISH_MINOR, 'true'), ne(env.IS_RC, 'true')) }}
             type=raw,value=latest,enable=${{ and(eq(env.PUBLISH_LATEST, 'true'), ne(env.IS_RC, 'true')) }}
+          flavor: |
+            latest=false
           labels: |
             org.opencontainers.image.title=${{ github.event.repository.name }}
             org.opencontainers.image.version=${{ env.TAG }}
