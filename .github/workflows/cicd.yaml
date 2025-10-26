@@ -194,6 +194,7 @@ jobs:
 
       - name: Attest build provenance (Docker Hub)
         if: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN != '' && vars.DOCKER_HUB_USERNAME != '' }}
+        continue-on-error: true
         id: attest-dh
         uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
         with:
