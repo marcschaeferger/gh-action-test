@@ -102,7 +102,9 @@ jobs:
             org.opencontainers.image.url=${{ github.event.repository.html_url }}
             org.opencontainers.image.description=${{ github.event.repository.description }}
             org.opencontainers.image.licenses=${{ github.event.repository.license.spdx_id }}
-            org.opencontainers.image.created=${{ steps.build.outputs.metadata_created || env.IMAGE_CREATED }}
+            org.opencontainers.image.created=${{ env.IMAGE_CREATED }}
+            org.opencontainers.image.ref.name=${{ env.TAG }}
+            org.opencontainers.image.authors=${{ github.repository_owner }}
 
       - name: Echo build config (non-secret)
         shell: bash
