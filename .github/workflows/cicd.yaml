@@ -353,7 +353,6 @@ jobs:
 
       - name: Trivy scan (GHCR image)
         uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
-        continue-on-error: true
         with:
           image-ref: ${{ env.GHCR_IMAGE }}@${{ steps.build.outputs.digest }}
           format: sarif
@@ -361,8 +360,10 @@ jobs:
           ignore-unfixed: true
           vuln-type: os,library
           severity: CRITICAL,HIGH
+          exit-code: ${{ (vars.TRIVY_FAIL || '0') }}
 
       - name: Upload SARIF
+        if: always()
         uses: github/codeql-action/upload-sarif@4e94bd11f71e507f7f87df81788dff88d1dacbfb # v4.31.0
         with:
           sarif_file: trivy-ghcr.sarif
