@@ -423,7 +423,15 @@ jobs:
         shell: bash
 
       - name: Verify SLSA provenance (GHCR)
-        run: cosign verify-attestation --type slsaprovenance "$GHCR_REF" -o text
+        env:
+          ISSUER: https://token.actions.githubusercontent.com
+          WFREF: ${{ github.workflow_ref }}
+        run: |
+          cosign verify-attestation \
+            --type slsaprovenance \
+            --certificate-oidc-issuer "$ISSUER" \
+            --certificate-identity "https://github.com/${WFREF}" \
+            "$GHCR_REF" -o text
         shell: bash
 
       - name: Verify signature (public key) Docker Hub digest
