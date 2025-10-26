@@ -556,8 +556,10 @@ jobs:
         with:
           tag_name: ${{ env.TAG }}
           generate_release_notes: true
+          prerelease: ${{ env.IS_RC == 'true' }}
           files: |
             bin/*
+          fail_on_unmatched_files: true
           body: |
             ## Container Images
             - GHCR: `${{ env.GHCR_REF }}`
