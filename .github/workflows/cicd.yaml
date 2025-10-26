@@ -107,7 +107,6 @@ jobs:
         uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
 
       - name: Log in to Docker Hub
-        if: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN != '' && vars.DOCKER_HUB_USERNAME != '' }}
         uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
         with:
           registry: docker.io
@@ -268,8 +267,8 @@ jobs:
           images: ${{ env.IMAGE_LIST }}
           tags: |
             type=semver,pattern={{version}},value=${{ env.TAG }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ env.TAG }},enable=${{ and(eq(env.PUBLISH_MINOR, 'true'), ne(env.IS_RC, 'true')) }}
-            type=raw,value=latest,enable=${{ and(eq(env.PUBLISH_LATEST, 'true'), ne(env.IS_RC, 'true')) }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ env.TAG }},enable=${{ env.PUBLISH_MINOR == 'true' && env.IS_RC != 'true' }}
+            type=raw,value=latest,enable=${{ env.PUBLISH_LATEST == 'true' && env.IS_RC != 'true' }}
           flavor: |
             latest=false
           labels: |
@@ -370,7 +369,6 @@ jobs:
           show-summary: true
 
       - name: Attest build provenance (Docker Hub)
-        if: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN != '' && vars.DOCKER_HUB_USERNAME != '' }}
         continue-on-error: true
         id: attest-dh
         uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
@@ -433,7 +431,6 @@ jobs:
         shell: bash
 
       - name: Sign Docker Hub image (digest) with key (recursive)
-        if: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN != '' && vars.DOCKER_HUB_USERNAME != '' }}
         continue-on-error: true
         env:
           COSIGN_YES: "true"
@@ -447,7 +444,6 @@ jobs:
         shell: bash
 
       - name: Sign Docker Hub attachments (SBOM and provenance) with key
-        if: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN != '' && vars.DOCKER_HUB_USERNAME != '' }}
         continue-on-error: true
         env:
           COSIGN_YES: "true"
@@ -462,7 +458,6 @@ jobs:
         shell: bash
 
       - name: Keyless sign & verify Docker Hub digest (OIDC)
-        if: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN != '' && vars.DOCKER_HUB_USERNAME != '' }}
         # debug
         continue-on-error: true
         env:
@@ -531,7 +526,6 @@ jobs:
         shell: bash
 
       - name: Verify signature (public key) Docker Hub digest
-        if: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN != '' && vars.DOCKER_HUB_USERNAME != '' }}
         continue-on-error: true
         env:
           COSIGN_PUBLIC_KEY: ${{ secrets.COSIGN_PUBLIC_KEY }}
@@ -543,7 +537,6 @@ jobs:
         shell: bash
 
       - name: Verify signature (public key) Docker Hub tag
-        if: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN != '' && vars.DOCKER_HUB_USERNAME != '' && env.TAG != '' }}
         continue-on-error: true
         env:
           COSIGN_PUBLIC_KEY: ${{ secrets.COSIGN_PUBLIC_KEY }}
