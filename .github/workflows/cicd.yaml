@@ -414,16 +414,25 @@ jobs:
           cosign sign --key env://COSIGN_PRIVATE_KEY --recursive "${GHCR_REF}"
         shell: bash
 
-      - name: Sign GHCR attachments (SBOM and provenance) with key
+      - name: Generate SBOM (SPDX JSON)
+        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
+        with:
+          image-ref: ${{ env.GHCR_IMAGE }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output: sbom.spdx.json
+
+      - name: Create SBOM attestation (GHCR, private key)
         env:
           COSIGN_YES: "true"
           COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
           COSIGN_PASSWORD:    ${{ secrets.COSIGN_PASSWORD }}
         run: |
           set -euo pipefail
-          echo "Signing attachments for ${GHCR_REF} (SBOM, provenance) with provided key"
-          cosign sign --key env://COSIGN_PRIVATE_KEY --attachment sbom "${GHCR_REF}"
-          cosign sign --key env://COSIGN_PRIVATE_KEY --attachment attestation "${GHCR_REF}"
+          cosign attest \
+            --key env://COSIGN_PRIVATE_KEY \
+            --type spdx \
+            --predicate sbom.spdx.json \
+            "${GHCR_REF}"
         shell: bash
 
       - name: Keyless sign & verify GHCR digest (OIDC)
