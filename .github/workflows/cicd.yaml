@@ -139,6 +139,21 @@ jobs:
           fi
         shell: bash
 
+      - name: Validate pushed tag format (no leading 'v')
+        if: ${{ github.event_name == 'push' }}
+        shell: bash
+        env:
+          TAG_GOT: ${{ env.TAG }}
+        run: |
+          set -euo pipefail
+          # Allowed: 1.2.3 or 1.2.3-rc.N
+          if [[ "$TAG_GOT" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
+            echo "Tag OK: $TAG_GOT"
+            exit 0
+          fi
+          echo "ERROR: Tag '$TAG_GOT' is not allowed. Use 'X.Y.Z' or 'X.Y.Z-rc.N' (no leading 'v')." >&2
+          exit 1
+
       - name: Wait for tag to be visible (dispatch only)
         if: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
