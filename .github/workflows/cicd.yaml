@@ -578,6 +578,6 @@ jobs:
           body: |
             ## Container Images
             - GHCR: `${{ env.GHCR_REF }}`
-            - Docker Hub: `${{ env.DH_REF }}`
+            - Docker Hub: `${{ env.DH_REF || 'N/A' }}`
 
             **Digest:** `${{ steps.build.outputs.digest }}`
