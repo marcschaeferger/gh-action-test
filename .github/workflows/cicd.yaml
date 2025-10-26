@@ -264,6 +264,20 @@ jobs:
           cosign sign --key env://COSIGN_PRIVATE_KEY --recursive "${DH_REF}"
         shell: bash
 
+      - name: Sign Docker Hub attachments (SBOM and provenance) with key
+        continue-on-error: true
+        env:
+          COSIGN_YES: "true"
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD:    ${{ secrets.COSIGN_PASSWORD }}
+          COSIGN_DOCKER_MEDIA_TYPES: "1"
+        run: |
+          set -euo pipefail
+          echo "Signing attachments for ${DH_REF} (SBOM, provenance) with provided key (Docker media types fallback)"
+          cosign sign --key env://COSIGN_PRIVATE_KEY --attachment sbom "${DH_REF}"
+          cosign sign --key env://COSIGN_PRIVATE_KEY --attachment attestation "${DH_REF}"
+        shell: bash
+
       - name: Keyless sign & verify Docker Hub digest (OIDC)
         # debug
         continue-on-error: true
