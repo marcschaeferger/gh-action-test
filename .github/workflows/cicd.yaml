@@ -12,13 +12,72 @@ on:
   push:
     tags:
       - "*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "SemVer version to release (e.g., 1.2.3, no leading 'v')"
+        required: true
+        type: string
+      publish_latest:
+        description: "Also publish the 'latest' image tag"
+        required: true
+        type: boolean
+        default: false
+      target_branch:
+        description: "Branch to tag"
+        required: false
+        default: "main"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref_name }}
   cancel-in-progress: true
 
 jobs:
+  prepare:
+    if: github.event_name == 'workflow_dispatch'
+    name: Prepare release (create tag)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Validate version input
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$INPUT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid version: $INPUT_VERSION (expected X.Y.Z)" >&2
+            exit 1
+          fi
+
+      - name: Create and push tag
+        shell: bash
+        env:
+          TARGET_BRANCH: ${{ inputs.target_branch }}
+          VERSION: ${{ inputs.version }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch --prune origin
+          git checkout "$TARGET_BRANCH"
+          git pull --ff-only origin "$TARGET_BRANCH"
+          if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
+            echo "Tag $VERSION already exists" >&2
+            exit 1
+          fi
+          git tag -a "$VERSION" -m "Release $VERSION"
+          git push origin "refs/tags/$VERSION"
+
   release:
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.actor != 'github-actions[bot]') }}
     name: Build and Release
     runs-on: ubuntu-24.04
     timeout-minutes: 120
@@ -58,13 +117,37 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract tag name
-        run: echo "TAG=${{ github.ref_name }}" >> $GITHUB_ENV
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "TAG=${INPUT_VERSION}" >> $GITHUB_ENV
+          else
+            echo "TAG=${{ github.ref_name }}" >> $GITHUB_ENV
+          fi
         shell: bash
 
       - name: Install Go
         uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
         with:
           go-version-file: go.mod
+
+      - name: Resolve publish-latest flag
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PL_INPUT: ${{ inputs.publish_latest }}
+          PL_VAR: ${{ vars.PUBLISH_LATEST }}
+        run: |
+          set -euo pipefail
+          val="false"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            if [ "${PL_INPUT}" = "true" ]; then val="true"; fi
+          else
+            if [ "${PL_VAR}" = "true" ]; then val="true"; fi
+          fi
+          echo "PUBLISH_LATEST=$val" >> $GITHUB_ENV
+        shell: bash
 
       - name: Cache Go modules
         if: ${{ hashFiles('**/go.sum') != '' }}
@@ -94,8 +177,7 @@ jobs:
             ${{ env.GHCR_IMAGE }}
           tags: |
             type=semver,pattern={{version}}
-          flavor: |
-            latest=false
+            type=raw,value=latest,enable=${{ env.PUBLISH_LATEST == 'true' }}
           labels: |
             org.opencontainers.image.title=${{ github.event.repository.name }}
             org.opencontainers.image.version=${{ env.TAG }}
