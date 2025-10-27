@@ -6,7 +6,7 @@ permissions:
   id-token: write          # Keyless-Signatures & Attestations
   attestations: write      # actions/attest-build-provenance
   security-events: write   # upload-sarif
-  actions: read 
+  actions: read
 
 on:
   push:
@@ -123,7 +123,6 @@ jobs:
       - name: Normalize image names to lowercase
         run: |
           set -euo pipefail
-          # Lowercase without introducing literal quotes or spawning subshells
           echo "GHCR_IMAGE=${GHCR_IMAGE,,}" >> "$GITHUB_ENV"
           echo "DOCKERHUB_IMAGE=${DOCKERHUB_IMAGE,,}" >> "$GITHUB_ENV"
         shell: bash
@@ -147,7 +146,6 @@ jobs:
           TAG_GOT: ${{ env.TAG }}
         run: |
           set -euo pipefail
-          # Allowed: 1.2.3 or 1.2.3-rc.N
           if [[ "$TAG_GOT" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
             echo "Tag OK: $TAG_GOT"
             exit 0
@@ -289,7 +287,6 @@ jobs:
       - name: Echo build config (non-secret)
         shell: bash
         env:
-          # OCI
           IMAGE_TITLE:        ${{ github.event.repository.name }}
           IMAGE_VERSION:      ${{ env.TAG }}
           IMAGE_REVISION:     ${{ github.sha }}
@@ -297,11 +294,9 @@ jobs:
           IMAGE_URL:          ${{ github.event.repository.html_url }}
           IMAGE_DESCRIPTION:  ${{ github.event.repository.description }}
           IMAGE_LICENSE:      ${{ env.IMAGE_LICENSE }}
-          # Images
           DOCKERHUB_IMAGE:    ${{ env.DOCKERHUB_IMAGE }}
           GHCR_IMAGE:         ${{ env.GHCR_IMAGE }}
           DOCKER_HUB_USER:    ${{ vars.DOCKER_HUB_USERNAME }}
-          # GitHub
           REPO:               ${{ github.repository }}
           OWNER:              ${{ github.repository_owner }}
           WORKFLOW_REF:       ${{ github.workflow_ref }}
@@ -332,7 +327,7 @@ jobs:
           echo "ref_name=${REF_NAME}"
           echo "run_url=${RUN_URL}"
           echo
-          echo "=== docker/metadata-action outputs (Tags/Labels), roh ==="
+          echo "=== docker/metadata-action outputs (Tags/Labels), raw ==="
           echo "::group::tags"
           echo "${{ steps.meta.outputs.tags }}"
           echo "::endgroup::"
@@ -353,16 +348,6 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ github.repository }}
           provenance: mode=max
           sbom: true
-
-      - name: Dequote image names (safety)
-        run: |
-          set -euo pipefail
-          # Remove any accidental literal double-quotes from the image names
-          GHCR_IMAGE=${GHCR_IMAGE//\"/}
-          DOCKERHUB_IMAGE=${DOCKERHUB_IMAGE//\"/}
-          echo "GHCR_IMAGE=$GHCR_IMAGE" >> "$GITHUB_ENV"
-          echo "DOCKERHUB_IMAGE=$DOCKERHUB_IMAGE" >> "$GITHUB_ENV"
-        shell: bash
 
       - name: Compute image digest refs
         run: |
@@ -422,18 +407,13 @@ jobs:
           image-ref: ${{ env.GHCR_IMAGE }}@${{ steps.build.outputs.digest }}
           format: spdx-json
           output: sbom.spdx.json
+
       - name: Validate SBOM JSON
-        run: |
-          set -euo pipefail
-          # Fail early if sbom is not valid JSON
-          jq -e . sbom.spdx.json >/dev/null
+        run: jq -e . sbom.spdx.json >/dev/null
         shell: bash
 
       - name: Minify SBOM JSON (optional hardening)
-        run: |
-          set -euo pipefail
-          # Minify to avoid surprising whitespace/control characters
-          jq -c . sbom.spdx.json > sbom.min.json && mv sbom.min.json sbom.spdx.json
+        run: jq -c . sbom.spdx.json > sbom.min.json && mv sbom.min.json sbom.spdx.json
         shell: bash
 
       - name: Create SBOM attestation (GHCR, private key)
@@ -448,6 +428,22 @@ jobs:
             --type spdxjson \
             --predicate sbom.spdx.json \
             "${GHCR_REF}"
+        shell: bash
+
+      - name: Create SBOM attestation (Docker Hub, private key)
+        continue-on-error: true
+        env:
+          COSIGN_YES: "true"
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD:    ${{ secrets.COSIGN_PASSWORD }}
+          COSIGN_DOCKER_MEDIA_TYPES: "1"
+        run: |
+          set -euo pipefail
+          cosign attest \
+            --key env://COSIGN_PRIVATE_KEY \
+            --type spdxjson \
+            --predicate sbom.spdx.json \
+            "${DH_REF}"
         shell: bash
 
       - name: Keyless sign & verify GHCR digest (OIDC)
@@ -479,36 +475,16 @@ jobs:
           cosign sign --key env://COSIGN_PRIVATE_KEY --recursive "${DH_REF}"
         shell: bash
 
-      - name: Sign Docker Hub attachments (SBOM and provenance) with key
-        continue-on-error: true
-        env:
-          COSIGN_YES: "true"
-          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
-          COSIGN_PASSWORD:    ${{ secrets.COSIGN_PASSWORD }}
-          COSIGN_DOCKER_MEDIA_TYPES: "1"
-        run: |
-          set -euo pipefail
-          echo "Signing attachments for ${DH_REF} (SBOM, provenance) with provided key (Docker media types fallback)"
-          cosign sign --key env://COSIGN_PRIVATE_KEY --attachment sbom "${DH_REF}"
-          cosign sign --key env://COSIGN_PRIVATE_KEY --attachment attestation "${DH_REF}"
-        shell: bash
-
       - name: Keyless sign & verify Docker Hub digest (OIDC)
-        # debug
         continue-on-error: true
         env:
           COSIGN_YES: "true"
           ISSUER: https://token.actions.githubusercontent.com
-          # Workaround
           COSIGN_DOCKER_MEDIA_TYPES: "1"
         run: |
           set -euo pipefail
-
           echo "Keyless signing ${DH_REF} (force public-good Rekor)"
-          cosign sign \
-            --rekor-url https://rekor.sigstore.dev \
-            --recursive "${DH_REF}"
-
+          cosign sign --rekor-url https://rekor.sigstore.dev --recursive "${DH_REF}"
           echo "Keyless verify via Rekor (strict identity)"
           if ! cosign verify \
             --rekor-url https://rekor.sigstore.dev \
@@ -584,6 +560,7 @@ jobs:
         shell: bash
 
       - name: Trivy scan (GHCR image)
+        id: trivy
         uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
         with:
           image-ref: ${{ env.GHCR_IMAGE }}@${{ steps.build.outputs.digest }}
@@ -595,7 +572,7 @@ jobs:
           exit-code: ${{ (vars.TRIVY_FAIL || '0') }}
 
       - name: Upload SARIF
-        if: always()
+        if: ${{ always() && hashFiles('trivy-ghcr.sarif') != '' }}
         uses: github/codeql-action/upload-sarif@4e94bd11f71e507f7f87df81788dff88d1dacbfb # v4.31.0
         with:
           sarif_file: trivy-ghcr.sarif
@@ -624,5 +601,4 @@ jobs:
             ## Container Images
             - GHCR: `${{ env.GHCR_REF }}`
             - Docker Hub: `${{ env.DH_REF || 'N/A' }}`
-
             **Digest:** `${{ steps.build.outputs.digest }}`
