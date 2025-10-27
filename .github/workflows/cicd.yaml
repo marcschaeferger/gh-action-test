@@ -580,11 +580,39 @@ jobs:
           sarif_file: trivy-ghcr.sarif
           category: Image Vulnerability Scan
 
-      - name: Export SBOM & provenance from registry
+      - name: Export SBOM & provenance from registry (attestations)
         run: |
           set -euo pipefail
-          cosign download sbom "$GHCR_REF" > sbom.registry.spdx.json
-          cosign download attestation "$GHCR_REF" > provenance.intoto.jsonl
+
+          # Download all attestations (DSSE envelopes) for the image/index
+          cosign download attestation "$GHCR_REF" > attestations.jsonl
+
+          # Extract the SPDX SBOM predicate (first match) to a clean JSON file
+          # predicateType for spdxjson in cosign is the full URL "https://spdx.dev/Document"
+          jq -r '
+            select(.payload)            # safety
+            | (.payload | @base64d | fromjson) as $env
+            | select($env.predicateType == "https://spdx.dev/Document")
+            | $env.predicate
+          ' attestations.jsonl | head -n1 > sbom.registry.spdx.json
+
+          # (optional) keep all SBOM envelopes (DSSE) for auditing
+          jq -c '
+            (.payload | @base64d | fromjson) as $env
+            | select($env.predicateType == "https://spdx.dev/Document")
+            | $env
+          ' attestations.jsonl > sbom.attestations.jsonl || true
+
+          # Extract only SLSA v1 provenance envelopes to a separate JSONL file
+          jq -c '
+            (.payload | @base64d | fromjson) as $env
+            | select($env.predicateType == "https://slsa.dev/provenance/v1")
+            | $env
+          ' attestations.jsonl > provenance.intoto.jsonl || true
+
+          # Small sanity checks so the step fails if nothing was found
+          test -s sbom.registry.spdx.json
+          test -s provenance.intoto.jsonl
         shell: bash
 
       - name: Build binaries
