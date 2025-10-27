@@ -529,8 +529,14 @@ jobs:
           ISSUER: https://token.actions.githubusercontent.com
           WFREF: ${{ github.workflow_ref }}
         run: |
+          set -euo pipefail
+          # (optional) show which predicate types are present to aid debugging
+          cosign download attestation "$GHCR_REF" \
+            | jq -r '.payload | @base64d | fromjson | .predicateType' | sort -u || true
+
+          # Verify the SLSA v1 provenance attestation (predicate URL)
           cosign verify-attestation \
-            --type slsaprovenance \
+            --type 'https://slsa.dev/provenance/v1' \
             --certificate-oidc-issuer "$ISSUER" \
             --certificate-identity "https://github.com/${WFREF}" \
             --rekor-url https://rekor.sigstore.dev \
